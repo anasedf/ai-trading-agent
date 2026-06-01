@@ -80,7 +80,8 @@ async def _test_anthropic() -> dict:
     import os
 
     time.time()
-    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    # Check os.environ first (explicitly set), then fall back to settings (loaded from .env file)
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") or settings.claude_code_oauth_token
     if token:
         return {"name": "Claude AI (Max)", "status": "connected", "latency_ms": 0, "detail": "OAuth token configured"}
     return {"name": "Claude AI (Max)", "status": "error", "latency_ms": 0, "detail": "CLAUDE_CODE_OAUTH_TOKEN not set"}
@@ -255,7 +256,7 @@ async def get_integration_config(db: AsyncSession = Depends(get_db)):
     # Read from Vault first, fallback to env
     import os
 
-    claude_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    claude_token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") or settings.claude_code_oauth_token
     mt5_url = await _get_config_value(db, "MT5_BRIDGE_URL", settings.mt5_bridge_url)
     mt5_key = await _get_config_value(db, "MT5_BRIDGE_API_KEY", getattr(settings, "mt5_bridge_api_key", ""))
     telegram_token = await _get_config_value(db, "TELEGRAM_BOT_TOKEN", getattr(settings, "telegram_bot_token", ""))
@@ -381,8 +382,8 @@ async def diagnose_claude_cli():
         }
     )
 
-    # 3. Check token env
-    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "")
+    # 3. Check token env (os.environ first, then settings fallback from .env file)
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "") or settings.claude_code_oauth_token
     has_space = " " in token
     result["checks"].append(
         {
