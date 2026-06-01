@@ -52,7 +52,10 @@ def _build_ensemble(params: dict | None, symbol: str) -> BaseStrategy:
 
     config_str = (params or {}).get("strategies") or settings.ensemble_strategies
     if not config_str:
-        raise ValueError("Ensemble requires 'strategies' param, e.g. 'ema_crossover:0.3,breakout:0.7'")
+        # Sensible default so "ensemble" is selectable from the UI with no manual
+        # config: a diversified weighted vote across the 4 core directional
+        # strategies (trend, filtered-trend, breakout, mean-reversion).
+        config_str = "ema_crossover:0.3,rsi_filter:0.2,breakout:0.3,mean_reversion:0.2"
 
     strategies = []
     for part in config_str.split(","):

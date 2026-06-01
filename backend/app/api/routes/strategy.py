@@ -21,6 +21,15 @@ async def get_available_strategies():
         except Exception:
             worst_case = ""
         strategies.append({"name": name, "class": cls.__name__, "worst_case": worst_case})
+    # Ensemble is built specially (not in STRATEGIES dict) — expose it so the UI
+    # can select it. With no params it uses a default diversified composition.
+    strategies.append(
+        {
+            "name": "ensemble",
+            "class": "EnsembleStrategy",
+            "worst_case": "All sub-strategies agree on a wrong signal — correlated errors amplify losses",
+        }
+    )
     return {"strategies": strategies}
 
 
