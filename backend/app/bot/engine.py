@@ -1178,7 +1178,15 @@ class BotEngine:
             if self.trailing_stop_enabled and positions and not self.paper_trade:
                 await self._apply_trailing_stops(positions)
 
-            await self._push_event("position_update", {"symbol": self.symbol, "positions": positions})
+            # Send the BROKER symbol (e.g. XAUUSDm), not the canonical one (GOLD),
+            # so it matches positions[].symbol (which comes from MT5). The frontend
+            # merges per-symbol; a canonical/broker mismatch made it fail to drop the
+            # engine's old positions and append duplicates until a full refetch.
+            from app.mt5.symbol_resolver import to_broker_alias
+
+            await self._push_event(
+                "position_update", {"symbol": to_broker_alias(self.symbol), "positions": positions}
+            )
         except Exception as e:
             logger.error(f"Position sync error: {e}")
 

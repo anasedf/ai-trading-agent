@@ -202,16 +202,21 @@ export default function DashboardPage() {
     subscribe("price_update", (data) => { if (data) setTick(data as NonNullable<typeof tick>); });
     subscribe("position_update", (data) => {
       const d = data as { symbol?: string; positions: typeof positions };
-      if (d.positions) {
-        // Each engine pushes only its own symbol's positions — merge, don't replace
-        const sym = d.symbol || (d.positions.length > 0 ? d.positions[0].symbol : null);
-        if (sym) {
-          setPositions([
-            ...useBotStore.getState().positions.filter((p) => p.symbol !== sym),
-            ...d.positions,
-          ]);
-        }
-      }
+      if (!d.positions) return;
+      // Each engine pushes a full snapshot of its own symbol's positions. Replace
+      // that engine's slice and keep the rest. Clear by every symbol the update
+      // refers to (event symbol + each position's symbol) so a canonical-vs-broker
+      // name mismatch can't leave stale rows, and dedup by ticket as a hard guard
+      // against duplicates (the bug that showed one position twice until refresh).
+      const clearSymbols = new Set(d.positions.map((p) => p.symbol));
+      if (d.symbol) clearSymbols.add(d.symbol);
+      const incomingTickets = new Set(d.positions.map((p) => p.ticket));
+      setPositions([
+        ...useBotStore.getState().positions.filter(
+          (p) => !clearSymbols.has(p.symbol) && !incomingTickets.has(p.ticket)
+        ),
+        ...d.positions,
+      ]);
     });
     subscribe("sentiment_update", (data) => { if (data) setSentiment(data as NonNullable<typeof sentiment>); });
     subscribe("bot_event", (data) => {
