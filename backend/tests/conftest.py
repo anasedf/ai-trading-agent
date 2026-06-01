@@ -14,6 +14,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import BigInteger, Integer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.db.models import Base
 
@@ -30,13 +31,40 @@ def _remap_bigint_for_sqlite(metadata):
 
 @pytest_asyncio.fixture
 async def db_engine():
-    """Create an in-memory SQLite async engine for testing."""
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    """Create an in-memory SQLite async engine for testing.
+
+    StaticPool + a single shared connection so every session opened against
+    this engine sees the same in-memory database (needed now that engine code
+    opens its own isolated async_session()s — see _route_async_session below).
+    """
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        echo=False,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with engine.begin() as conn:
         _remap_bigint_for_sqlite(Base.metadata)
         await conn.run_sync(Base.metadata.create_all)
     yield engine
     await engine.dispose()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _route_async_session_to_test_db(db_engine, monkeypatch):
+    """Point app.db.session.async_session at the in-memory test DB.
+
+    Engine/scheduler code opens its own isolated sessions via
+    ``from app.db.session import async_session`` (call-time import). Without
+    this, those calls hit the real Postgres in .env — which leaked a paper
+    test-trade into the production DB. Patching the module attribute redirects
+    every such call to the test SQLite. Autouse so no test can pollute prod.
+    """
+    import app.db.session as db_session_mod
+
+    test_factory = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(db_session_mod, "async_session", test_factory)
+    yield
 
 
 @pytest_asyncio.fixture
