@@ -48,6 +48,7 @@ import {
   getSymbols,
   getAnalytics,
   resetPeakBalance,
+  getRolloutMode,
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { showSuccess, showError } from "@/lib/toast";
@@ -100,13 +101,14 @@ export default function DashboardPage() {
     { headline: string; source: string; sentiment_label: string; sentiment_score: number; created_at: string }[]
   >([]);
   const [analytics, setAnalytics] = useState<Record<string, unknown> | null>(null);
+  const [rollout, setRollout] = useState<string>("");
   const { isConnected, subscribe } = useWebSocket();
   const activeSymbolRef = useRef(activeSymbol);
   activeSymbolRef.current = activeSymbol;
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes, analyticsRes, eventsRes] = await Promise.all([
+      const [statusRes, symbolsRes, posRes, sentRes, newsRes, accRes, pnlRes, analyticsRes, eventsRes, rolloutRes] = await Promise.all([
         getBotStatus().catch(() => null),
         getSymbols().catch(() => null),
         getPositions().catch(() => null),
@@ -116,7 +118,9 @@ export default function DashboardPage() {
         getDailyPnl().catch(() => null),
         getAnalytics(undefined, 30).catch(() => null),
         getBotEvents({ days: 1, limit: 50 }).catch(() => null),
+        getRolloutMode().catch(() => null),
       ]);
+      if (rolloutRes?.data?.mode) setRollout(rolloutRes.data.mode);
 
       // Aggregate status response has { symbols: { XAUUSD: {...}, ... }, active_count, total_count }
       if (statusRes?.data?.symbols) {
@@ -313,6 +317,25 @@ export default function DashboardPage() {
         {status?.paper_trade && (
           <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 text-xs font-semibold">
             PAPER
+          </Badge>
+        )}
+        {rollout && (
+          <Badge
+            variant="outline"
+            title={
+              rollout === "live" ? "LIVE — real orders at full size"
+              : rollout === "micro" ? "MICRO — real orders capped at 0.01 lot"
+              : rollout === "paper" ? "PAPER — simulated orders, no real execution"
+              : "SHADOW — decisions logged only, nothing executed"
+            }
+            className={`text-xs font-semibold uppercase ${
+              rollout === "live" ? "border-red-500 text-red-600 dark:text-red-400"
+              : rollout === "micro" ? "border-amber-500 text-amber-600 dark:text-amber-400"
+              : rollout === "paper" ? "border-blue-500 text-blue-600 dark:text-blue-400"
+              : "border-zinc-400 text-zinc-500 dark:text-zinc-400"
+            }`}
+          >
+            {rollout}
           </Badge>
         )}
         <div className="flex items-center gap-1.5">
