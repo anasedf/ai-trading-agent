@@ -71,11 +71,14 @@ class BotScheduler:
         return TIMEFRAME_CRON.get(timeframe, {"minute": "0,15,30,45"})
 
     def start(self):
-        # Update price cache every 1 second
+        # Update price cache every 2 seconds. At 1s, a slow MT5 tick fetch
+        # (stale/closed market) frequently overran the interval and spammed
+        # "maximum number of running instances reached" skips; 2s is ample for
+        # a dashboard price cache and leaves headroom for a slow fetch.
         self.scheduler.add_job(
             self._tick_job,
             "interval",
-            seconds=1,
+            seconds=2,
             id="bot_tick",
             max_instances=1,
             coalesce=True,
