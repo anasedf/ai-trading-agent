@@ -3,6 +3,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { TrendingUp, TrendingDown, XCircle, AlertTriangle, Brain, Activity } from "lucide-react";
 import type { BotEvent } from "@/store/botStore";
+import { getTimezone } from "@/lib/time";
 
 const eventConfig: Record<string, { icon: typeof Activity; color: string }> = {
   trade_opened: { icon: TrendingUp, color: "text-success dark:text-green-400" },
@@ -22,7 +23,7 @@ function formatTime(timestamp: string) {
     if (diff < 60000) return "just now";
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return date.toLocaleDateString("en-GB", { timeZone: "Asia/Bangkok" });
+    return date.toLocaleDateString("en-GB", { timeZone: getTimezone() });
   } catch {
     return "";
   }

@@ -7,6 +7,15 @@ import { PageInstructions } from "@/components/layout/PageInstructions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { showSuccess, showError } from "@/lib/toast";
 import api from "@/lib/api";
+// Shared time helpers: tag backend naive-UTC timestamps as UTC (the old code
+// parsed them as browser-local, shifting every time) and render in the user's
+// selected timezone.
+import {
+  formatTime as formatTimeTH,
+  formatDateTime as formatDateTimeTH,
+  formatDayHeading,
+  getTimezone,
+} from "@/lib/time";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,28 +50,6 @@ const CATEGORY_CONFIG: Record<string, { label: string; color: string; dot: strin
 };
 
 const CATEGORIES = ["", "trade", "signal", "sentiment", "optimization", "risk", "system"];
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-const TH_TZ = "Asia/Bangkok";
-
-function formatTimeTH(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    timeZone: TH_TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDateTimeTH(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    timeZone: TH_TZ,
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -114,12 +101,7 @@ export default function ActivityPage() {
   const grouped = useMemo(() => {
     const g: Record<string, ActivityItem[]> = {};
     for (const item of visibleItems) {
-      const dateKey = new Date(item.timestamp).toLocaleDateString("en-GB", {
-        timeZone: TH_TZ,
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-      });
+      const dateKey = formatDayHeading(item.timestamp);
       (g[dateKey] ??= []).push(item);
     }
     return g;
@@ -147,7 +129,7 @@ export default function ActivityPage() {
       <PageHeader title="AI Activity" subtitle="Timeline of AI decisions, analyses, and actions">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">
-            {lastRefresh.toLocaleTimeString("en-GB", { timeZone: TH_TZ })}
+            {lastRefresh.toLocaleTimeString("en-GB", { timeZone: getTimezone() })}
           </span>
           <button
             type="button"

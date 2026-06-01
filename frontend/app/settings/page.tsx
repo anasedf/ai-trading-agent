@@ -17,6 +17,7 @@ import {
   getBotStatus, updateSettings, updateStrategy, getRolloutMode, setRolloutMode, getRolloutReadiness, getAvailableStrategies,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { getTimezone, setTimezone, browserTimezone, COMMON_TIMEZONES } from "@/lib/time";
 import { showSuccess, showError } from "@/lib/toast";
 
 type RolloutMode = "shadow" | "paper" | "micro" | "live";
@@ -73,6 +74,11 @@ export default function SettingsPage() {
   const [confirmLive, setConfirmLive] = useState(false);
   const [strategies, setStrategies] = useState<{ name: string; worst_case: string }[]>([]);
   const [autoStrategySwitch, setAutoStrategySwitch] = useState(false);
+  // Display timezone (client-only; read from localStorage after mount to avoid
+  // SSR hydration mismatch). Changing it reloads so every time display updates.
+  const [tz, setTz] = useState<string>("UTC");
+  useEffect(() => { setTz(getTimezone()); }, []);
+  const handleTzChange = (v: string | null) => { if (!v) return; setTimezone(v); setTz(v); window.location.reload(); };
 
   const fetchAll = useCallback(async () => {
     try {
@@ -157,6 +163,30 @@ export default function SettingsPage() {
   return (
     <div className="p-4 sm:p-6 xl:p-8 space-y-5 sm:space-y-6 max-w-4xl page-enter">
       <PageHeader title="Settings" subtitle="Trading mode, risk parameters, and system health" />
+
+      {/* ── Display Timezone ─────────────────────────────────── */}
+      <Card>
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Info className="w-4 h-4 text-muted-foreground" /> Display Timezone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
+          <p className="text-xs text-muted-foreground mb-3">
+            Times across the app (events, AI analysis, history) are stored in UTC and shown in this timezone.
+          </p>
+          <div className="max-w-xs">
+            <Select value={tz} onValueChange={handleTzChange}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(COMMON_TIMEZONES.includes(browserTimezone()) ? COMMON_TIMEZONES : [browserTimezone(), ...COMMON_TIMEZONES]).map((z) => (
+                  <SelectItem key={z} value={z}>{z === browserTimezone() ? `${z} (device)` : z}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Decision Mode ────────────────────────────────────── */}
       <Card>
