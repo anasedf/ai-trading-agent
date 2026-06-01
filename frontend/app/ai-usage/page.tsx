@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import { Zap, Activity, DollarSign, Database, TrendingUp, Cpu } from "lucide-react";
+import { parseUTC, getTimezone } from "@/lib/time";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend,
@@ -115,8 +116,8 @@ function formatCost(n: number): string {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    timeZone: "Asia/Bangkok",
+  return parseUTC(iso).toLocaleString("en-GB", {
+    timeZone: getTimezone(),
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

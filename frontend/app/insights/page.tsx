@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, Brain, BarChart3, Loader2 } from "lucide-react";
+import { formatDateTime, parseUTC, getTimezone } from "@/lib/time";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { GoldGauge } from "@/components/ui/gold-gauge";
@@ -80,7 +81,7 @@ export default function InsightsPage() {
   };
 
   const chartData = [...history].reverse().map((h) => ({
-    time: new Date(h.created_at).toLocaleDateString("en-GB", { timeZone: "Asia/Bangkok", month: "short", day: "numeric", hour: "2-digit" }),
+    time: parseUTC(h.created_at).toLocaleDateString("en-GB", { timeZone: getTimezone(), month: "short", day: "numeric", hour: "2-digit" }),
     score: h.sentiment_score,
   }));
 
@@ -143,7 +144,7 @@ export default function InsightsPage() {
                 )}
 
                 <p className="text-[11px] text-muted-foreground/60 text-center font-medium">
-                  Updated: {new Date(sentiment.analyzed_at).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}
+                  Updated: {formatDateTime(sentiment.analyzed_at)}
                 </p>
               </>
             ) : (

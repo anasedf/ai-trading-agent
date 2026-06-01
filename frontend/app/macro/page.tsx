@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Globe, Calendar, RefreshCw, ArrowRightLeft } from "lucide-react";
+import { parseUTC } from "@/lib/time";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { getMacroLatest, getMacroCorrelations, getMacroEvents, collectMacro } from "@/lib/api";
@@ -165,7 +166,7 @@ export default function MacroPage() {
               <div className="space-y-3">
                 {events.map((event, i) => {
                   const daysUntil = Math.ceil(
-                    (new Date(event.date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                    (parseUTC(event.date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                   );
                   return (
                     <div key={i} className="border border-border rounded-2xl p-3 space-y-1">

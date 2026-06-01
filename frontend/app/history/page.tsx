@@ -10,6 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Download, BarChart3, TrendingUp, DollarSign, Target, History, Archive } from "lucide-react";
+import { formatDate, parseUTC } from "@/lib/time";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { StatCard } from "@/components/ui/stat-card";
@@ -191,7 +192,7 @@ export default function HistoryPage() {
                               {trades.map((t) => (
                                 <TableRow key={t.id} className="hover:bg-muted/30 transition-colors">
                                   <TableCell className="text-muted-foreground text-xs">
-                                    {new Date(t.open_time).toLocaleDateString("en-GB", { timeZone: "Asia/Bangkok" })}
+                                    {formatDate(t.open_time)}
                                   </TableCell>
                                   <TableCell className="text-xs font-medium">{t.symbol}</TableCell>
                                   <TableCell className={`text-xs font-semibold ${t.type === "BUY" ? "text-success dark:text-green-400" : "text-destructive"}`}>
@@ -268,10 +269,10 @@ export default function HistoryPage() {
                   <AreaChart
                     data={trades
                       .filter((t) => t.profit !== null && t.close_time)
-                      .sort((a, b) => new Date(a.close_time!).getTime() - new Date(b.close_time!).getTime())
+                      .sort((a, b) => parseUTC(a.close_time!).getTime() - parseUTC(b.close_time!).getTime())
                       .reduce<{ date: string; pnl: number }[]>((acc, t) => {
                         const prev = acc.length > 0 ? acc[acc.length - 1].pnl : 0;
-                        acc.push({ date: new Date(t.close_time!).toLocaleDateString("en-GB", { timeZone: "Asia/Bangkok" }), pnl: prev + (t.profit ?? 0) });
+                        acc.push({ date: formatDate(t.close_time!), pnl: prev + (t.profit ?? 0) });
                         return acc;
                       }, [])}
                   >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getTimezone } from "@/lib/time";
 import {
   Activity,
   AlertTriangle,
@@ -71,7 +72,7 @@ interface PoolHealthResponse {
 type Variant = "default" | "success" | "danger" | "warning" | "gold";
 
 function fmtTs(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString();
+  return new Date(ts * 1000).toLocaleTimeString("en-GB", { timeZone: getTimezone() });
 }
 
 function utilizationVariant(u: number): Variant {

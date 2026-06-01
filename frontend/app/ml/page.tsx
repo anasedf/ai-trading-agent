@@ -10,6 +10,7 @@ import { Brain, Play, Zap, BarChart3, Target, TrendingUp, Database, CheckCircle2
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatDateTime } from "@/lib/time";
 import { showSuccess, showError } from "@/lib/toast";
 import { trainModel, getModelStatus, mlPredict, getDataStatus, collectData, getSymbols, getDriftReport, getCalibration } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from "recharts";
@@ -414,7 +415,7 @@ export default function MLPage() {
                     Confidence: <span className="font-bold text-foreground">{((prediction.confidence as number) * 100).toFixed(1)}%</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {new Date(prediction.timestamp as string).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}
+                    {formatDateTime(prediction.timestamp as string)}
                   </p>
                 </div>
               )}

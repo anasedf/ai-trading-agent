@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PageInstructions } from "@/components/layout/PageInstructions";
 import { EmptyState } from "@/components/ui/empty-state";
+import { formatDateTime } from "@/lib/time";
 
 interface BotEvent {
   id: number;
@@ -140,7 +141,7 @@ export default function NotificationsPage() {
               {visibleEvents.map((e) => (
                 <tr key={e.id} className="border-b border-border/50">
                   <td className="py-2 pr-4 whitespace-nowrap text-muted-foreground">
-                    {new Date(e.created_at).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })}
+                    {formatDateTime(e.created_at)}
                   </td>
                   <td className={`py-2 pr-4 whitespace-nowrap font-medium ${EVENT_COLORS[e.type] || ""}`}>
                     {e.type.replace(/_/g, " ")}

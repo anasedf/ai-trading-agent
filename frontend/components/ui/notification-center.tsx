@@ -5,6 +5,7 @@ import { Bell, AlertCircle, TrendingUp, Zap, Info } from "lucide-react";
 import { useBotStore } from "@/store/botStore";
 import type { BotEvent } from "@/store/botStore";
 import { cn } from "@/lib/utils";
+import { parseUTC } from "@/lib/time";
 
 const eventIcons: Record<string, typeof Info> = {
   signal: TrendingUp,
@@ -23,7 +24,7 @@ const eventColors: Record<string, string> = {
 };
 
 function getTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseUTC(dateStr).getTime();
   const seconds = Math.floor(diff / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);

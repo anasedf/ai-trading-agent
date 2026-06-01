@@ -2,6 +2,7 @@
 
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseUTC } from "@/lib/time";
 
 type Props = {
   headline: string;
@@ -22,7 +23,7 @@ function extractDomain(source: string): string {
 
 function getTimeAgo(isoTime: string): string {
   const ts = isoTime.endsWith("Z") || isoTime.includes("+") ? isoTime : isoTime + "Z";
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseUTC(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m`;

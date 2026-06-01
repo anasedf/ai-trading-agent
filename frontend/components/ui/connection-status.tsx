@@ -2,6 +2,7 @@
 
 import { useBotStore } from "@/store/botStore";
 import { cn } from "@/lib/utils";
+import { parseUTC } from "@/lib/time";
 
 export function ConnectionStatus() {
   const wsConnected = useBotStore((s) => s.wsConnected);
@@ -42,7 +43,7 @@ export function ConnectionStatus() {
 }
 
 function getTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseUTC(dateStr).getTime();
   const seconds = Math.floor(diff / 1000);
   if (seconds < 5) return "just now";
   if (seconds < 60) return `${seconds}s ago`;

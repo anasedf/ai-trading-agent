@@ -43,12 +43,17 @@ export function setTimezone(tz: string): void {
 }
 
 // Treat a backend timestamp as UTC: append "Z" unless it already carries a
-// timezone designator (Z, or a +hh:mm / -hh:mm offset).
-function asUTC(iso: string): Date {
+// timezone designator (Z, or a +hh:mm / -hh:mm offset). Use this anywhere a
+// backend timestamp is turned into a Date for relative-time diffs ("3m ago")
+// or epoch conversion (charts) — `new Date(naiveUTC)` would otherwise parse it
+// as browser-local and be off by the user's UTC offset.
+export function parseUTC(iso: string): Date {
   if (!iso) return new Date(NaN);
   const hasTz = /[zZ]$/.test(iso) || /[+-]\d{2}:?\d{2}$/.test(iso);
   return new Date(hasTz ? iso : iso + "Z");
 }
+
+const asUTC = parseUTC;
 
 export function formatTime(iso: string, tz: string = getTimezone()): string {
   const d = asUTC(iso);

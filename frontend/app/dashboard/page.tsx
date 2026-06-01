@@ -51,6 +51,7 @@ import {
 } from "@/lib/api";
 import { useWebSocket } from "@/lib/websocket";
 import { showSuccess, showError } from "@/lib/toast";
+import { formatDateTime } from "@/lib/time";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { SkeletonCard, SkeletonChart } from "@/components/ui/skeleton-compositions";
 import { useBotStore } from "@/store/botStore";
@@ -677,7 +678,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-[11px] font-normal text-muted-foreground">
-                  <span>{(status.ai_decision as Record<string, unknown>).timestamp ? new Date((status.ai_decision as Record<string, unknown>).timestamp as string).toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—"}</span>
+                  <span>{(status.ai_decision as Record<string, unknown>).timestamp ? formatDateTime((status.ai_decision as Record<string, unknown>).timestamp as string) : "—"}</span>
                   <span>{status.ai_decision.tool_calls} tools</span>
                   <span>{status.ai_decision.turns} turns</span>
                   <span>{status.ai_decision.duration_s}s</span>
