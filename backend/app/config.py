@@ -17,6 +17,7 @@ SYMBOL_PROFILES: dict[str, dict] = {
         "ml_forward_bars": 10,
         "ml_timeframe": "M15",
         "asset_class": "metal",
+        "broker_alias": "XAUUSDm",  # Exness micro account symbol
     },
     "OILCash": {
         "display_name": "WTI Oil",
@@ -75,6 +76,11 @@ SYMBOL_ALIASES: dict[str, str] = {
     "OILCashmicro": "OILCash",
     "BTCUSDmicro": "BTCUSD",
     "USDJPYmicro": "USDJPY",
+    # Exness micro account suffixes
+    "XAUUSDm": "GOLD",
+    "XTIUSDm": "OILCash",
+    "BTCUSDm": "BTCUSD",
+    "USDJPYm": "USDJPY",
 }
 
 
@@ -178,10 +184,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # AI (Claude Agent SDK uses CLAUDE_CODE_OAUTH_TOKEN env var directly).
-    # Declared but unused: kept so older deployments with ANTHROPIC_API_KEY in
-    # their .env do not fail Settings validation under strict ``extra=forbid``.
+    # Both fields declared but unused by Settings: kept so deployments with
+    # these keys in their .env do not fail under strict ``extra=forbid``.
     # Actual API client is built around the SDK's OAuth flow.
     anthropic_api_key: str = ""
+    claude_code_oauth_token: str = ""
 
     # Binance (for BTCUSD — uses Binance API instead of MT5)
     binance_api_key: str = ""
