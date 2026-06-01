@@ -107,6 +107,53 @@ class TestBotEngine:
         assert engine._paper_positions[0]["type"] == "BUY"
         assert engine._paper_positions[0]["symbol"] == "GOLD"
 
+    async def test_shadow_mode_skips_execution(self, engine, make_ohlcv_df):
+        """Shadow rollout must NOT place any order on the strategy-engine path."""
+        engine.paper_trade = False  # shadow gates the real path; paper toggle off
+        await engine.redis.set("guardrails:rollout_mode", "shadow")
+        await engine.start()
+        engine.started_at = datetime.now(UTC) - timedelta(hours=3)
+
+        df = make_ohlcv_df(rows=200, trend="up", base_price=2000.0)
+        df.loc[df.index[-2], "signal"] = 1
+        df["atr"] = 10.0
+        engine.market_data.get_ohlcv = AsyncMock(return_value=df)
+        engine.market_data.get_current_tick = AsyncMock(return_value={"ask": 2050.0, "bid": 2049.0})
+        engine.strategy.calculate = MagicMock(return_value=df)
+        engine.executor.place_order = AsyncMock()
+
+        with (
+            patch.object(settings, "use_mtf_filter", False),
+            patch.dict("sys.modules", {"app.ai.confirmation_gate": None}),
+        ):
+            await engine.process_candle()
+
+        engine.executor.place_order.assert_not_called()
+        assert len(engine._paper_positions) == 0
+
+    async def test_micro_mode_caps_lot(self, engine, make_ohlcv_df):
+        """Micro rollout must cap the executed lot at 0.01."""
+        await engine.redis.set("guardrails:rollout_mode", "micro")
+        engine.fixed_lot = 0.5  # force a large lot so the 0.01 cap is observable
+        await engine.start()
+        engine.started_at = datetime.now(UTC) - timedelta(hours=3)
+
+        df = make_ohlcv_df(rows=200, trend="up", base_price=2000.0)
+        df.loc[df.index[-2], "signal"] = 1
+        df["atr"] = 10.0
+        engine.market_data.get_ohlcv = AsyncMock(return_value=df)
+        engine.market_data.get_current_tick = AsyncMock(return_value={"ask": 2050.0, "bid": 2049.0})
+        engine.strategy.calculate = MagicMock(return_value=df)
+
+        with (
+            patch.object(settings, "use_mtf_filter", False),
+            patch.dict("sys.modules", {"app.ai.confirmation_gate": None}),
+        ):
+            await engine.process_candle()
+
+        assert len(engine._paper_positions) == 1
+        assert engine._paper_positions[0]["lot"] == 0.01
+
     async def test_circuit_breaker_pauses_bot(self, engine, redis_client):
         """When daily loss exceeds limit, bot should pause."""
         await engine.start()

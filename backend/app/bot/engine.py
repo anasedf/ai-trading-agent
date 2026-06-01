@@ -884,13 +884,40 @@ class BotEngine:
                 f"Event filter [{self.symbol}]: lot reduced to {lot} (event: {near_event.get('event', 'unknown')})"
             )
 
-        # Place order (real or paper)
         order_type = "BUY" if signal == 1 else "SELL"
         comment = f"{self.strategy.name}"
-        tag = "📝 PAPER" if self.paper_trade else ""
+
+        # Rollout-mode enforcement on the strategy-engine path. Previously only the
+        # AI-agent (MCP broker tool) honoured rollout mode, so shadow/paper/micro
+        # had NO effect here and the engine always executed at the sized lot. Now:
+        #   shadow → log the intended order, do not execute
+        #   paper  → simulate (same as the per-symbol paper toggle)
+        #   micro  → execute but cap the lot at MICRO_MAX_LOT (0.01)
+        #   live   → execute as sized
+        from mcp_server.guardrails import MICRO_MAX_LOT, TradingGuardrails
+
+        rollout = await TradingGuardrails(self.redis).get_persisted_rollout_mode()
+
+        # The per-symbol paper toggle OR rollout='paper' route to the simulator.
+        # An explicit paper toggle wins over shadow: the user turned it on to *see*
+        # simulated fills, so we don't silently log-and-skip them.
+        use_paper = self.paper_trade or rollout == "paper"
+
+        if rollout == "shadow" and not use_paper:
+            await self._log_event(
+                BotEventType.SIGNAL_DETECTED,
+                f"[SHADOW] would {order_type} {lot} {self.symbol} @ {entry_price} SL={sl_tp.sl} TP={sl_tp.tp}",
+            )
+            logger.info(f"[SHADOW] {self.symbol} {order_type} {lot} logged, not executed")
+            return
+        if rollout == "micro" and lot > MICRO_MAX_LOT:
+            logger.info(f"[MICRO] {self.symbol} lot capped {lot} -> {MICRO_MAX_LOT}")
+            lot = MICRO_MAX_LOT
+
+        tag = "📝 PAPER" if use_paper else ""
 
         start_time = time.monotonic()
-        if self.paper_trade:
+        if use_paper:
             result = self._create_paper_order(order_type, lot, entry_price, sl_tp, comment)
         else:
             result = await self.executor.place_order(self.symbol, order_type, lot, sl_tp.sl, sl_tp.tp, comment)
