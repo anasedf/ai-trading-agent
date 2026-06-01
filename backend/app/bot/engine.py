@@ -1049,17 +1049,24 @@ class BotEngine:
         try:
             from sqlalchemy import select as _select
 
+            from app.db.session import async_session
+
             stmt = (
-                _select(Trade)
+                _select(Trade.profit)
                 .where(Trade.symbol == self.symbol, Trade.profit.isnot(None), Trade.is_archived.is_(False))
                 .order_by(Trade.id.desc())
                 .limit(STREAK_RECENT_TRADES)
             )
-            result = await self.db.execute(stmt)
-            recent = result.scalars().all()
+            # Isolated session — never the shared engine self.db. Overlapping
+            # scheduler jobs on one connection raise asyncpg "concurrent
+            # operations"/InFailedSQLTransaction; a poisoned shared session would
+            # silently drop this check and let the bot overtrade after losses.
+            async with async_session() as session:
+                result = await session.execute(stmt)
+                profits = result.scalars().all()
             consecutive_losses = 0
-            for t in recent:
-                if t.profit <= 0:
+            for p in profits:
+                if p <= 0:
                     consecutive_losses += 1
                 else:
                     break
@@ -1080,14 +1087,10 @@ class BotEngine:
                         name=f"loss_streak_alert_{self.symbol}",
                     )
         except Exception as e:
-            # Surfacing this is important — silently dropping the streak check
-            # means the bot overtrades after losses. Rollback the shared session
-            # per known-issue mitigation.
+            # Surfacing matters: silently dropping the streak check lets the bot
+            # overtrade after losses. The isolated session above rolls back and
+            # closes itself, so there is no shared session left to repair here.
             logger.warning(f"Streak adjustment failed [{self.symbol}]: {e!r}")
-            try:
-                await self.db.rollback()
-            except Exception as rb_err:
-                logger.error(f"Streak adjustment rollback failed [{self.symbol}] — db session is dirty: {rb_err!r}")
         return lot
 
     def _create_paper_order(self, order_type: str, lot: float, entry_price: float, sl_tp, comment: str) -> dict:
@@ -1241,20 +1244,23 @@ class BotEngine:
             profit_str = f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}"
             logger.info(f"Position closed: ticket={ticket} price={close_price} profit={profit_str}")
 
-            # Update trade in DB
+            # Update trade in DB (isolated session — not the shared self.db)
             from sqlalchemy import select
 
+            from app.db.session import async_session
+
             stmt = select(Trade).where(Trade.ticket == ticket)
-            result = await self.db.execute(stmt)
-            trade = result.scalar_one_or_none()
-            if trade:
-                trade.close_price = close_price
-                trade.close_time = close_time
-                trade.profit = profit
-                # Post-trade analysis
-                analysis = self._build_post_trade_analysis(trade, deal, self._multi_tf_regime)
-                trade.post_trade_analysis = analysis
-                await self.db.commit()
+            async with async_session() as session:
+                result = await session.execute(stmt)
+                trade = result.scalar_one_or_none()
+                if trade:
+                    trade.close_price = close_price
+                    trade.close_time = close_time
+                    trade.profit = profit
+                    # Post-trade analysis
+                    analysis = self._build_post_trade_analysis(trade, deal, self._multi_tf_regime)
+                    trade.post_trade_analysis = analysis
+                    await session.commit()
 
             # Log event
             await self._log_event(
@@ -1355,6 +1361,7 @@ class BotEngine:
 
             from app.constants import PREDICTION_FEEDBACK_HOURS
             from app.db.models import MLPredictionLog
+            from app.db.session import async_session
 
             cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=PREDICTION_FEEDBACK_HOURS)
             stmt = (
@@ -1369,22 +1376,22 @@ class BotEngine:
                 .order_by(MLPredictionLog.created_at.desc())
                 .limit(1)
             )
-            result = await self.db.execute(stmt)
-            pred = result.scalar_one_or_none()
-            if pred:
-                actual = 1 if profit > 0 else -1
-                pred.actual_outcome = actual
-                # BUY prediction (+1) correct if profit > 0, SELL (-1) correct if profit > 0
-                pred.was_correct = (pred.predicted_signal == actual) or (pred.predicted_signal == 0 and abs(profit) < 1)
-                await self.db.commit()
-                logger.info(
-                    f"ML feedback [{self.symbol}]: prediction={pred.predicted_signal}, outcome={actual}, correct={pred.was_correct}"
-                )
+            # Isolated session — not the shared self.db.
+            async with async_session() as session:
+                result = await session.execute(stmt)
+                pred = result.scalar_one_or_none()
+                if pred:
+                    actual = 1 if profit > 0 else -1
+                    pred.actual_outcome = actual
+                    # BUY prediction (+1) correct if profit > 0, SELL (-1) correct if profit > 0
+                    pred.was_correct = (pred.predicted_signal == actual) or (
+                        pred.predicted_signal == 0 and abs(profit) < 1
+                    )
+                    await session.commit()
+                    logger.info(
+                        f"ML feedback [{self.symbol}]: prediction={pred.predicted_signal}, outcome={actual}, correct={pred.was_correct}"
+                    )
         except Exception as e:
-            try:
-                await self.db.rollback()
-            except Exception as rb_err:
-                logger.error(f"ML feedback rollback failed [{self.symbol}]: {rb_err!r}")
             logger.warning(f"ML feedback update failed: {e}")
 
     async def _sync_paper_positions(self) -> list[dict]:
@@ -1595,17 +1602,19 @@ class BotEngine:
         """Save trade to DB with retry and Redis fallback."""
         import asyncio as _asyncio
 
+        from app.db.session import async_session
+
         for attempt in range(max_retries):
             try:
-                self.db.add(trade)
-                await self.db.commit()
+                # Isolated session per attempt; the context manager rolls back and
+                # closes on failure, so a retry starts clean and never poisons a
+                # shared session shared with other scheduler jobs.
+                async with async_session() as session:
+                    session.add(trade)
+                    await session.commit()
                 return
             except Exception as e:
                 logger.warning(f"Trade save attempt {attempt + 1}/{max_retries} failed: {e}")
-                try:
-                    await self.db.rollback()
-                except Exception as rb_err:
-                    logger.error(f"Trade save rollback failed [{self.symbol}]: {rb_err!r}")
                 if attempt < max_retries - 1:
                     await _asyncio.sleep(2**attempt)
 
@@ -1640,21 +1649,25 @@ class BotEngine:
         try:
             from sqlalchemy import select
 
+            from app.db.session import async_session
+
             stmt = (
-                select(Trade)
+                select(Trade.profit)
                 .where(Trade.symbol == self.symbol, Trade.profit.isnot(None), Trade.is_archived.is_(False))
                 .order_by(Trade.id.desc())
                 .limit(KELLY_RECENT_TRADES)
             )
-            result = await self.db.execute(stmt)
-            trades = result.scalars().all()
+            # Isolated session — see _apply_streak_adjustment for the rationale.
+            async with async_session() as session:
+                result = await session.execute(stmt)
+                profits = result.scalars().all()
 
-            if len(trades) >= MIN_KELLY_TRADES:
-                wins = [t for t in trades if t.profit > 0]
-                losses = [t for t in trades if t.profit <= 0]
-                win_rate = len(wins) / len(trades)
-                avg_win = sum(t.profit for t in wins) / len(wins) if wins else 0
-                avg_loss = abs(sum(t.profit for t in losses) / len(losses)) if losses else 1
+            if len(profits) >= MIN_KELLY_TRADES:
+                wins = [p for p in profits if p > 0]
+                losses = [p for p in profits if p <= 0]
+                win_rate = len(wins) / len(profits)
+                avg_win = sum(wins) / len(wins) if wins else 0
+                avg_loss = abs(sum(losses) / len(losses)) if losses else 1
 
                 if win_rate >= KELLY_MIN_WIN_RATE and avg_win > 0 and avg_loss > 0:
                     lot = self.risk_manager.calculate_kelly_size(
@@ -1826,8 +1839,6 @@ class BotEngine:
             return
 
         try:
-            from sqlalchemy import select
-
             from app.mt5.symbol_resolver import to_broker_alias
 
             # 1. Get current MT5 positions.
@@ -1849,17 +1860,40 @@ class BotEngine:
             positions = [p for p in pos_result.get("data", []) if p.get("symbol") in (self.symbol, _broker)]
             mt5_tickets = {p["ticket"] for p in positions}
 
-            # 2. Get DB trades that should be open (no close_time)
-            stmt = select(Trade).where(Trade.symbol == self.symbol, Trade.close_time.is_(None))
-            result = await self.db.execute(stmt)
-            db_trades = result.scalars().all()
+            # 2-4. Load DB open trades, adopt orphans, reconcile phantoms — all in
+            # one isolated session (see _reconcile_db_state). Never the shared self.db.
+            await self._reconcile_db_state(positions, mt5_tickets)
+
+        except Exception as e:
+            logger.error(f"Position reconciliation error [{self.symbol}]: {e}")
+
+    async def _reconcile_db_state(self, positions: list[dict], mt5_tickets: set) -> None:
+        """Reconcile DB open-trade records against the live MT5 snapshot.
+
+        Runs entirely inside one isolated session so it never touches the shared
+        self.db that overlapping scheduler jobs (candle/sync) use — the source of
+        the asyncpg "concurrent operations" / InFailedSQLTransaction cascades.
+        Notifications/event logging run AFTER the session closes (they open their
+        own sessions) so a broker/Telegram await never holds a DB connection.
+        """
+        from sqlalchemy import select
+
+        from app.db.session import async_session
+
+        adopted: list[int] = []
+        phantoms: set[int] = set()
+        async with async_session() as session:
+            db_trades = (
+                (await session.execute(select(Trade).where(Trade.symbol == self.symbol, Trade.close_time.is_(None))))
+                .scalars()
+                .all()
+            )
             db_tickets = {t.ticket for t in db_trades}
 
-            # 3. Orphan detection: in MT5 but not in DB → auto-adopt
+            # Orphan detection: in MT5 but not in DB → auto-adopt
             orphans = mt5_tickets - db_tickets
             if orphans:
                 pos_map = {p["ticket"]: p for p in positions}
-                adopted = []
                 for ticket in orphans:
                     p = pos_map.get(ticket)
                     if not p:
@@ -1870,48 +1904,30 @@ class BotEngine:
                             if isinstance(p.get("open_time"), str)
                             else _naive_utc()
                         )
-                        trade = Trade(
-                            ticket=ticket,
-                            symbol=self.symbol,
-                            type=p.get("type", "BUY"),
-                            lot=p.get("lot", 0.01),
-                            open_price=p.get("open_price", 0),
-                            sl=p.get("sl", 0),
-                            tp=p.get("tp", 0),
-                            open_time=open_time,
-                            strategy_name=p.get("comment", "adopted_from_mt5") or "adopted_from_mt5",
+                        session.add(
+                            Trade(
+                                ticket=ticket,
+                                symbol=self.symbol,
+                                type=p.get("type", "BUY"),
+                                lot=p.get("lot", 0.01),
+                                open_price=p.get("open_price", 0),
+                                sl=p.get("sl", 0),
+                                tp=p.get("tp", 0),
+                                open_time=open_time,
+                                strategy_name=p.get("comment", "adopted_from_mt5") or "adopted_from_mt5",
+                            )
                         )
-                        self.db.add(trade)
-                        await self.db.commit()
+                        await session.commit()
                         adopted.append(ticket)
                         logger.info(f"Auto-adopted orphan [{self.symbol}]: ticket={ticket}")
                     except Exception as e:
                         logger.warning(f"Failed to adopt orphan {ticket}: {e}")
-                        try:
-                            await self.db.rollback()
-                        except Exception as rb_err:
-                            logger.error(f"Adopt-orphan rollback failed [{self.symbol}]: {rb_err!r}")
+                        await session.rollback()
 
-                if adopted:
-                    tickets_str = ", ".join(str(t) for t in sorted(adopted))
-                    await self._log_event(
-                        BotEventType.ERROR,
-                        f"Auto-adopted orphaned positions: {tickets_str}",
-                    )
-                    if self.notifier:
-                        await self._notify(
-                            self.notifier._send(
-                                f"🔄 <b>Auto-adopted positions</b> [{self.symbol}]\n"
-                                f"Tickets: {tickets_str}\n"
-                                f"สร้าง record ใน DB ให้อัตโนมัติแล้ว"
-                            )
-                        )
-
-            # 4. Phantom detection: in DB but not in MT5
+            # Phantom detection: in DB but not in MT5
             phantoms = db_tickets - mt5_tickets
             if phantoms:
                 logger.warning(f"Phantom records [{self.symbol}]: {phantoms} (in DB, not in MT5)")
-                # Try to find close details from MT5 history
                 history_result = await self.connector.get_history(days=7)
                 history_deals = history_result.get("data", []) if history_result.get("success") else []
                 history_map = {d["ticket"]: d for d in history_deals}
@@ -1937,16 +1953,19 @@ class BotEngine:
                         logger.warning(
                             f"Reconciled phantom #{trade.ticket}: not found in 7-day history, marked closed with profit=0"
                         )
+                await session.commit()
 
-                await self.db.commit()
-                await self._log_event(
-                    BotEventType.ERROR,
-                    f"Phantom records reconciled: {phantoms}",
+        # Post-session notifications (each opens its own session via _log_event).
+        if adopted:
+            tickets_str = ", ".join(str(t) for t in sorted(adopted))
+            await self._log_event(BotEventType.ERROR, f"Auto-adopted orphaned positions: {tickets_str}")
+            if self.notifier:
+                await self._notify(
+                    self.notifier._send(
+                        f"🔄 <b>Auto-adopted positions</b> [{self.symbol}]\n"
+                        f"Tickets: {tickets_str}\n"
+                        f"สร้าง record ใน DB ให้อัตโนมัติแล้ว"
+                    )
                 )
-
-        except Exception as e:
-            logger.error(f"Position reconciliation error [{self.symbol}]: {e}")
-            try:
-                await self.db.rollback()
-            except Exception as rb_err:
-                logger.error(f"Reconcile rollback failed [{self.symbol}]: {rb_err!r}")
+        if phantoms:
+            await self._log_event(BotEventType.ERROR, f"Phantom records reconciled: {phantoms}")
