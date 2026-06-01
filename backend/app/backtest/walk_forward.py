@@ -149,10 +149,10 @@ def walk_forward_test(
             min_trades=min_trades,
         )
 
-        if not opt_result.results:
+        if not opt_result.all_results:
             continue
 
-        best = opt_result.results[0]
+        best = opt_result.all_results[0]
         best_params = best["params"]
         is_sharpe = best.get("sharpe_ratio", 0)
         is_sharpes.append(is_sharpe)
