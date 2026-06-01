@@ -16,11 +16,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Seed defaults mirror SYMBOL_PROFILES in app/config.py as of this migration.
+# broker_alias is intentionally left NULL: the broker-specific symbol name
+# (e.g. GOLDmicro on XM, XAUUSDm on Exness) cannot be presumed at migration
+# time. Operators set it per symbol via the Symbols UI / config for their
+# broker; a NULL alias means "use the canonical symbol name as-is".
 _SEED_ROWS = [
     {
         "symbol": "GOLD",
         "display_name": "Gold (XAUUSD)",
-        "broker_alias": "GOLDmicro",
+        "broker_alias": None,
         "is_enabled": True,
         "default_timeframe": "M15",
         "pip_value": 1.0,
@@ -38,7 +42,7 @@ _SEED_ROWS = [
     {
         "symbol": "OILCash",
         "display_name": "WTI Oil",
-        "broker_alias": "OILCashmicro",
+        "broker_alias": None,
         "is_enabled": False,
         "default_timeframe": "M15",
         "pip_value": 10.0,
@@ -56,7 +60,7 @@ _SEED_ROWS = [
     {
         "symbol": "BTCUSD",
         "display_name": "Bitcoin",
-        "broker_alias": "BTCUSDmicro",
+        "broker_alias": None,
         "is_enabled": False,
         "default_timeframe": "M15",
         "pip_value": 1.0,
@@ -74,7 +78,7 @@ _SEED_ROWS = [
     {
         "symbol": "USDJPY",
         "display_name": "USD/JPY",
-        "broker_alias": "USDJPYmicro",
+        "broker_alias": None,
         "is_enabled": False,
         "default_timeframe": "M15",
         "pip_value": 100.0,
