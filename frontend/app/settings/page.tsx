@@ -390,6 +390,16 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {rolloutMode !== "live" && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 mb-2">
+                  {rolloutMode === "micro"
+                    ? "⚠ Micro mode: lot is capped at 0.01 — Lot Mode / Max Lot / Max Risk below set the size but it only applies in Live mode."
+                    : rolloutMode === "shadow"
+                    ? "⚠ Shadow mode: orders are logged only, not executed. The sizing settings below take effect in Micro/Live."
+                    : "⚠ Paper mode: orders are simulated (no broker order). Sizing below is used for the simulated fill."}
+                </p>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 sm:gap-x-6 gap-y-3 text-xs">
                 {/* Lot Mode */}
                 <div className="space-y-1">
