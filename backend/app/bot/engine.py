@@ -45,6 +45,12 @@ from app.constants import (
 )
 
 
+class _GateSkip(Exception):
+    """Sentinel raised to intentionally skip the confirmation gate when too few
+    data sources are available. Distinct from a real gate error so the two can
+    be logged differently (debug vs warning) instead of both being swallowed."""
+
+
 def _naive_utc() -> datetime:
     """Return current UTC time without timezone info (for DB columns without tz)."""
     return datetime.now(UTC).replace(tzinfo=None)
@@ -483,7 +489,7 @@ class BotEngine:
                     logger.debug(
                         f"Confirmation gate skipped [{self.symbol}]: only {available_sources}/5 sources available"
                     )
-                    raise RuntimeError("skip")  # caught by except below → proceed without gate
+                    raise _GateSkip  # caught below → proceed without gate (intentional)
                 # Require majority of available sources (at least 2)
                 required = max(2, (available_sources + 1) // 2)
                 gate = ConfirmationGate(required=required)
@@ -542,8 +548,18 @@ class BotEngine:
                     )
                     return
 
+            except _GateSkip:
+                # Intentional: not enough data sources ready, proceed without the gate.
+                pass
             except Exception as e:
-                logger.debug(f"Confirmation gate skipped [{self.symbol}]: {e}")
+                # A REAL error inside the gate (data/compute failure). Previously this
+                # was swallowed at debug level, silently bypassing the safety gate.
+                # Surface it loudly — we still fail-open (the strategy + risk checks
+                # above already passed) but the operator must see that the extra
+                # consensus layer was skipped due to an error.
+                logger.warning(
+                    f"Confirmation gate ERROR [{self.symbol}] — proceeding without it (strategy+risk already passed): {e!r}"
+                )
 
             # 4. Size position and place order
             await self._size_and_place_order(signal, signal_label, df, balance, ai_sentiment, near_event=near_event)
