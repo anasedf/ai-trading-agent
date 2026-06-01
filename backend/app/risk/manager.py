@@ -152,7 +152,9 @@ class RiskManager:
 
         ``sl_distance`` is a price-unit value matching ``calculate_lot_size``.
         """
-        if avg_loss <= 0 or win_rate <= 0:
+        # avg_win<=0 must also bail: b=avg_win/avg_loss would be 0 and the
+        # kelly = (...)/b below would raise ZeroDivisionError.
+        if avg_loss <= 0 or avg_win <= 0 or win_rate <= 0:
             return self.calculate_lot_size(balance, sl_distance, pip_value)
 
         b = avg_win / avg_loss

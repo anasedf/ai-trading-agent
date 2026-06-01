@@ -17,6 +17,9 @@ def _get_risk_manager(symbol: str = "GOLD") -> RiskManager:
         sl_atr_mult=profile.get("sl_atr_mult", 1.5),
         tp_atr_mult=profile.get("tp_atr_mult", 2.0),
         max_lot=profile.get("max_lot", 1.0),
+        # contract_size drives lot sizing — omitting it defaulted to 100, which
+        # mis-sizes every non-GOLD symbol (USDJPY/BTC) when the AI agent sizes a trade.
+        contract_size=profile.get("contract_size", 100),
     )
 
 
