@@ -1793,8 +1793,25 @@ class BotEngine:
         try:
             from sqlalchemy import select
 
-            # 1. Get current MT5 positions
-            positions = await self.executor.get_open_positions(self.symbol)
+            from app.mt5.symbol_resolver import to_broker_alias
+
+            # 1. Get current MT5 positions.
+            # IMPORTANT: a failed broker fetch must NOT be treated as "no open
+            # positions". executor.get_open_positions() returns [] both on a real
+            # empty book AND on a transient MT5 fetch failure; using that here
+            # would make every still-open DB trade look like a phantom and mark
+            # it closed with profit=0 (orphaning a live position). Read the raw
+            # connector result and bail on failure so reconciliation only runs
+            # against a confirmed-good position snapshot.
+            pos_result = await self.connector.get_positions()
+            if not pos_result.get("success"):
+                logger.warning(
+                    f"Reconcile [{self.symbol}] skipped: MT5 positions fetch failed "
+                    f"({pos_result.get('error')}) — open trades left untouched"
+                )
+                return
+            _broker = to_broker_alias(self.symbol)
+            positions = [p for p in pos_result.get("data", []) if p.get("symbol") in (self.symbol, _broker)]
             mt5_tickets = {p["ticket"] for p in positions}
 
             # 2. Get DB trades that should be open (no close_time)
